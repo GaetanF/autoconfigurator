@@ -1,0 +1,53 @@
+#!/usr/bin/env python2.6
+import libvirt
+import sys
+import re
+import socket
+import os
+
+state = {0: "No State", 1: "Running", 2: "Blocked", 4: "ShutDown", 5: "ShutOff"};
+
+#print os.getlogin()
+#sys.exit(0) 
+
+hostSock=socket.gethostbyaddr(sys.argv[1])
+host=hostSock[0]
+
+if __name__=="__main__":
+    #Connect to some hypervisor.
+    conn=libvirt.open("qemu://%s/system" % (host) )
+    if conn == None:
+        print 'Unknown: Cannot connect to libvirt daemon'
+        sys.exit(3)
+        
+    nbrRunning=0;
+    for id in conn.listDomainsID():
+        dom=conn.lookupByID(id)
+        if dom.info()[0] == 1:
+            nbrRunning=nbrRunning+1;
+    
+    nbrNotRunning=0;
+    for name in conn.listDefinedDomains():
+        dom=conn.lookupByName(name)
+        if dom.info()[0] == 5:
+	    found = False
+	    for line in dom.XMLDesc(0).split("\n"):
+                m = re.match(".*<description>([^<]*)</description>.*", line)
+	        if m is not None:
+                    if m.group(1) == "node:srv" and m.group(1) != "node:srv_rescue":
+		        found = True
+                        break
+            if found:
+		nbrNotRunning = nbrNotRunning+1;
+    
+    if nbrRunning == 0 and nbrNotRunning == 0:
+    	print 'OK: Nothing running'
+	sys.exit(0)
+    
+    if nbrNotRunning == 0 and nbrRunning > 0:
+    	print 'OK: %s DomU running' % (nbrRunning)
+	sys.exit(0)
+
+    if nbrNotRunning > 0:
+        print 'CRITICAL : %s DomU not running (Running: %s)' % (nbrNotRunning, nbrRunning)
+	sys.exit(2)
